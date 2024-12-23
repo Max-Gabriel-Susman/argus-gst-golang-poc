@@ -1,54 +1,66 @@
+// This is the same as the `launch` example. See the godoc and other examples for more
+// in-depth usage of the bindings.
 package main
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
-	"github.com/ziutek/gst"
+	"github.com/go-gst/go-glib/glib"
+	"github.com/go-gst/go-gst/gst"
 )
 
 func main() {
-	// Initialize GStreamer
-	gst.Init(nil)
+	// This example expects a simple `gst-launch-1.0` string as arguments
+	if len(os.Args) == 1 {
+		fmt.Println("Pipeline string cannot be empty")
+		os.Exit(1)
+	}
 
-	// Create a GStreamer pipeline
-	pipeline := gst.NewPipeline("pipeline")
+	// Initialize GStreamer with the arguments passed to the program. Gstreamer
+	// and the bindings will automatically pop off any handled arguments leaving
+	// nothing but a pipeline string (unless other invalid args are present).
+	gst.Init(&os.Args)
 
-	// Create elements
-	src := gst.NewElement("videotestsrc", "source")
-	enc := gst.NewElement("x264enc", "encoder")
-	mux := gst.NewElement("hlsmux", "muxer")
-	sink := gst.NewElement("filesink", "sink")
+	// Create a main loop. This is only required when utilizing signals via the bindings.
+	// In this example, the AddWatch on the pipeline bus requires iterating on the main loop.
+	mainLoop := glib.NewMainLoop(glib.MainContextDefault(), false)
 
-	// Set properties
-	sink.SetProperty("location", "output.m3u8")
+	// Build a pipeline string from the cli arguments
+	pipelineString := strings.Join(os.Args[1:], " ")
 
-	// Add elements to the pipeline
-	pipeline.Add(src, enc, mux, sink)
+	/// Let GStreamer create a pipeline from the parsed launch syntax on the cli.
+	pipeline, err := gst.NewPipelineFromString(pipelineString)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(2)
+	}
 
-	// Link elements
-	src.Link(enc)
-	enc.Link(mux)
-	mux.Link(sink)
+	// Add a message handler to the pipeline bus, printing interesting information to the console.
+	pipeline.GetPipelineBus().AddWatch(func(msg *gst.Message) bool {
+		switch msg.Type() {
+		case gst.MessageEOS: // When end-of-stream is received flush the pipeling and stop the main loop
+			pipeline.BlockSetState(gst.StateNull)
+			mainLoop.Quit()
+		case gst.MessageError: // Error messages are always fatal
+			err := msg.ParseError()
+			fmt.Println("ERROR:", err.Error())
+			if debug := err.DebugString(); debug != "" {
+				fmt.Println("DEBUG:", debug)
+			}
+			mainLoop.Quit()
+		default:
+			// All messages implement a Stringer. However, this is
+			// typically an expensive thing to do and should be avoided.
+			fmt.Println(msg)
+		}
+		return true
+	})
 
-	// Start playing the pipeline
+	// Start the pipeline
 	pipeline.SetState(gst.StatePlaying)
 
-	// Wait until the pipeline finishes
-	bus := pipeline.GetBus()
-	for {
-		msg := bus.TimedPopFiltered(gst.CLOCK_TIME_NONE, gst.MESSAGE_EOS|gst.MESSAGE_ERROR)
-		if msg != nil {
-			switch msg.Type {
-			case gst.MESSAGE_EOS:
-				fmt.Println("End of Stream")
-				pipeline.SetState(gst.StateNull)
-				return
-			case gst.MESSAGE_ERROR:
-				err := msg.ParseError()
-				fmt.Printf("Error: %s\\\\n", err)
-				pipeline.SetState(gst.StateNull)
-				return
-			}
-		}
-	}
+	// Block and iterate on the main loop
+	mainLoop.Run()
 }

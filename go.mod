@@ -2,6 +2,12 @@ module github.com/Max-Gabriel-Susman/argus-stream-engine-service
 
 go 1.23.4
 
-require github.com/ziutek/gst v0.0.0-20210107120415-007422cec673
+require (
+	github.com/go-gst/go-glib v1.4.0
+	github.com/go-gst/go-gst v1.4.0
+)
 
-require github.com/ziutek/glib v0.0.0-20141105171902-a43f7a959840 // indirect
+require (
+	github.com/mattn/go-pointer v0.0.1 // indirect
+	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
+)
