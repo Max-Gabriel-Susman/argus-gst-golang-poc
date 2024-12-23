@@ -5,3 +5,6 @@ build:
 
 run: 
 	./main videotestsrc ! autovideosink
+
+test: 
+	go test ./...
