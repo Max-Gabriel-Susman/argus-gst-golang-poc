@@ -48,6 +48,10 @@ jobs:
             gstreamer1.0-qt5 \
             gstreamer1.0-pulseaudio
 
+      # Verify GStreamer version
+      - name: Verify GStreamer version
+        run: gst-launch-1.0 --version
+
       # Setup Go GStreamer bindings requirements
       - name: Install Go GStreamer bindings
         run: go get "github.com/go-gst/go-gst/gst" "github.com/go-gst/go-glib/glib"
