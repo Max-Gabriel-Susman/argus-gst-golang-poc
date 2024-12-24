@@ -13,3 +13,13 @@ go get "github.com/go-gst/go-gst/gst" "github.com/go-gst/go-glib/glib"
 make build
 
 make run
+
+Run the program with an RTMP input and an HTTP output port:
+```
+go run main.go rtmp://source.endpoint/live/stream 8080
+```
+
+Access the HLS stream via:
+```
+http://localhost:8080/playlist.m3u8
+```

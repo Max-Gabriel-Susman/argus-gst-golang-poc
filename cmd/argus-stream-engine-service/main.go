@@ -1,49 +1,53 @@
-// This is the same as the `launch` example. See the godoc and other examples for more
-// in-depth usage of the bindings.
 package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
-	"strings"
 
 	"github.com/go-gst/go-glib/glib"
 	"github.com/go-gst/go-gst/gst"
 )
 
 func main() {
-	// This example expects a simple `gst-launch-1.0` string as arguments
-	if len(os.Args) == 1 {
-		fmt.Println("Pipeline string cannot be empty")
+	if len(os.Args) != 3 {
+		fmt.Println("Usage: go run main.go <input_rtmp_url> <http_output_port>")
 		os.Exit(1)
 	}
 
-	// Initialize GStreamer with the arguments passed to the program. Gstreamer
-	// and the bindings will automatically pop off any handled arguments leaving
-	// nothing but a pipeline string (unless other invalid args are present).
-	gst.Init(&os.Args)
+	// Initialize GStreamer
+	gst.Init(nil)
 
-	// Create a main loop. This is only required when utilizing signals via the bindings.
-	// In this example, the AddWatch on the pipeline bus requires iterating on the main loop.
+	// Create a main loop for handling events
 	mainLoop := glib.NewMainLoop(glib.MainContextDefault(), false)
 
-	// Build a pipeline string from the cli arguments
-	pipelineString := strings.Join(os.Args[1:], " ")
+	// Get input RTMP URL and HTTP output port
+	inputRTMP := os.Args[1]
+	outputPort := os.Args[2]
 
-	/// Let GStreamer create a pipeline from the parsed launch syntax on the cli.
+	// Define the GStreamer pipeline
+	// This pipeline takes the RTMP input, processes it, and serves via HTTP using HLS
+	pipelineString := fmt.Sprintf(
+		"rtmpsrc location=%s ! flvdemux name=demux "+
+			"demux.video ! decodebin ! videoconvert ! x264enc bitrate=1000 ! mpegtsmux ! hlssink location=/tmp/segment%%05d.ts playlist-location=/tmp/playlist.m3u8 playlist-length=3 target-duration=2 max-files=5",
+		inputRTMP,
+	)
+
+	// Create the GStreamer pipeline
 	pipeline, err := gst.NewPipelineFromString(pipelineString)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("Failed to create pipeline:", err)
 		os.Exit(2)
 	}
 
-	// Add a message handler to the pipeline bus, printing interesting information to the console.
+	// Add a message handler to the pipeline bus
 	pipeline.GetPipelineBus().AddWatch(func(msg *gst.Message) bool {
 		switch msg.Type() {
-		case gst.MessageEOS: // When end-of-stream is received flush the pipeling and stop the main loop
+		case gst.MessageEOS: // End of stream
+			fmt.Println("End of Stream reached")
 			pipeline.BlockSetState(gst.StateNull)
 			mainLoop.Quit()
-		case gst.MessageError: // Error messages are always fatal
+		case gst.MessageError: // Error handling
 			err := msg.ParseError()
 			fmt.Println("ERROR:", err.Error())
 			if debug := err.DebugString(); debug != "" {
@@ -51,16 +55,39 @@ func main() {
 			}
 			mainLoop.Quit()
 		default:
-			// All messages implement a Stringer. However, this is
-			// typically an expensive thing to do and should be avoided.
-			fmt.Println(msg)
+			// Optional: Log other messages for debugging
+			fmt.Println("Message:", msg.String())
 		}
 		return true
 	})
 
-	// Start the pipeline
-	pipeline.SetState(gst.StatePlaying)
+	// Set the pipeline state to PLAYING
+	fmt.Println("Starting RTMP to HTTP streaming service...")
+	err = pipeline.SetState(gst.StatePlaying)
+	if err != nil {
+		fmt.Println("Failed to start pipeline:", err)
+		os.Exit(3)
+	}
 
-	// Block and iterate on the main loop
+	// Serve the HLS output via a simple HTTP server
+	go func() {
+		fmt.Printf("Serving HLS stream on http://localhost:%s/playlist.m3u8\n", outputPort)
+		if err := serveHLS(outputPort); err != nil {
+			fmt.Println("Failed to serve HLS:", err)
+			mainLoop.Quit()
+		}
+	}()
+
+	// Run the main loop to process events
 	mainLoop.Run()
+
+	// Cleanup
+	pipeline.SetState(gst.StateNull)
+	fmt.Println("Pipeline stopped")
+}
+
+// serveHLS starts a simple HTTP server to serve the HLS files
+func serveHLS(port string) error {
+	httpDir := "/tmp" // Directory containing HLS files
+	return http.ListenAndServe(":"+port, http.FileServer(http.Dir(httpDir)))
 }
