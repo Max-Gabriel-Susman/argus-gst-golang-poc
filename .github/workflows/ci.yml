@@ -1,41 +1,61 @@
-name: Build
+name: Go CI
 
 on:
-  create:
-    tags:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - '**'
 
 jobs:
-
-  build:
-    name: Build Images
+  test:
     runs-on: ubuntu-latest
+
     steps:
+      # Checkout the code
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - uses: actions/checkout@v2
+      # Set up Go environment
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23.4' # Specify the Go version you use
 
-    - name: Login to container reigstry
-      run: echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
+      # Prepare system for GStreamer installation
+      - name: Update system and install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libunwind-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libgstreamer-plugins-bad1.0-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-ugly \
+            gstreamer1.0-libav \
+            gstreamer1.0-tools \
+            gstreamer1.0-x \
+            gstreamer1.0-alsa \
+            gstreamer1.0-gl \
+            gstreamer1.0-gtk3 \
+            gstreamer1.0-qt5 \
+            gstreamer1.0-pulseaudio
 
-    - name: Get image version
-      shell: bash
-      run: |
-        echo ::set-output name=tag::$([[ "${GITHUB_REF##*/}" == "main" ]] && echo latest || echo ${GITHUB_REF##*/})
-      id: version
+      # Verify GStreamer version
+      - name: Verify GStreamer version
+        run: gst-launch-1.0 --version
 
-    - name: Build the manager docker image
-      run: VERSION=${{ steps.version.outputs.tag }} make docker-build
+      # Install specific version of Go GStreamer bindings to ensure compatibility
+      - name: Install Go GStreamer bindings
+        run: |
+          go get github.com/go-gst/go-gst@v1.3.0
+          go get github.com/go-gst/go-glib@v1.3.0
 
-    - name: Build the gstreamer docker image
-      run: VERSION=${{ steps.version.outputs.tag }} make docker-gst-build
+      # Install Go dependencies
+      - name: Install Go dependencies
+        run: go mod tidy
 
-    - name: Push the manager docker image
-      run: VERSION=${{ steps.version.outputs.tag }} make docker-push
-      if: ${{ github.event_name != 'pull_request' }}
-
-    - name: Push the gstreamer docker image
-      run: VERSION=${{ steps.version.outputs.tag }} make docker-gst-push
-      if: ${{ github.event_name != 'pull_request' }}
+      # Run tests
+      # - name: Run tests
+      #   run: go test ./...
