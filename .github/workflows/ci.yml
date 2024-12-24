@@ -20,17 +20,17 @@ jobs:
         with:
           go-version: '1.23.4' # Specify the Go version you use
 
-      # Fix potential unmet dependencies
+      # Add GStreamer PPA and install latest GStreamer version
       - name: Prepare system for GStreamer installation
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends software-properties-common
-          sudo apt-get install -y libunwind-dev
+          sudo add-apt-repository ppa:ubuntuhandbook1/gstreamer -y
+          sudo apt-get update
 
       # Install GStreamer requirements
       - name: Install GStreamer
         run: |
-          sudo apt-get update
           sudo apt-get install -y \
             libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev \
@@ -46,15 +46,18 @@ jobs:
             gstreamer1.0-gl \
             gstreamer1.0-gtk3 \
             gstreamer1.0-qt5 \
-            gstreamer1.0-pulseaudio
+            gstreamer1.0-pulseaudio \
+            libunwind-dev
 
       # Verify GStreamer version
       - name: Verify GStreamer version
         run: gst-launch-1.0 --version
 
-      # Setup Go GStreamer bindings requirements
+      # Install specific version of Go GStreamer bindings to ensure compatibility
       - name: Install Go GStreamer bindings
-        run: go get "github.com/go-gst/go-gst/gst" "github.com/go-gst/go-glib/glib"
+        run: |
+          go get github.com/go-gst/go-gst@v1.3.0
+          go get github.com/go-gst/go-glib@v1.3.0
 
       # Install dependencies
       - name: Install Go dependencies
